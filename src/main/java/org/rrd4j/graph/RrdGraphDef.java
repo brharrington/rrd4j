@@ -1,21 +1,13 @@
 package org.rrd4j.graph;
 
-import java.awt.BasicStroke;
-import java.awt.Font;
-import java.awt.Paint;
-import java.awt.Stroke;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.List;
-import java.util.Locale;
-import java.util.TimeZone;
-
 import org.rrd4j.ConsolFun;
 import org.rrd4j.core.FetchData;
 import org.rrd4j.core.Util;
 import org.rrd4j.data.DataProcessor;
 import org.rrd4j.data.Plottable;
-import org.rrd4j.data.Variable;
+
+import java.awt.*;
+import java.util.*;
 
 /**
  * Class which should be used to define new Rrd4j graph. Once constructed and populated with data
@@ -61,7 +53,6 @@ public class RrdGraphDef implements RrdGraphConstants {
     boolean altAutoscaleMax = false; // ok
     int unitsExponent = Integer.MAX_VALUE; // ok
     int unitsLength = DEFAULT_UNITS_LENGTH; // ok
-    String verticalLabel = null; // ok
     int width = DEFAULT_WIDTH, height = DEFAULT_HEIGHT; // ok
     boolean interlaced = false; // ok
     String imageInfo = null; // ok
@@ -71,11 +62,8 @@ public class RrdGraphDef implements RrdGraphConstants {
     String overlayImage = null; // ok
     String unit = null; // ok
     boolean lazy = false; // ok
-    double minValue = Double.NaN; // ok
-    double maxValue = Double.NaN; // ok
     boolean rigid = false; // ok
     double base = DEFAULT_BASE;  // ok
-    boolean logarithmic = false; // ok
     Paint[] colors = new Paint[]{
             // ok
             DEFAULT_CANVAS_COLOR,
@@ -112,10 +100,16 @@ public class RrdGraphDef implements RrdGraphConstants {
     boolean showSignature = true;
     Stroke gridStroke = GRID_STROKE;
     Stroke tickStroke = TICK_STROKE;
+    int primaryYAxis = DEFAULT_Y_AXIS;
 
     final List<Source> sources = new ArrayList<Source>();
     final List<CommentText> comments = new ArrayList<CommentText>();
-    final List<PlotElement> plotElements = new ArrayList<PlotElement>();
+
+    //used to draw in order plot elements were added regardless of what axis they are on
+    final Map<PlotElement, Integer> plotElements = new LinkedHashMap<PlotElement, Integer>();
+    final Map<Integer, RrdAxisDef> valueAxisDefs = new HashMap<Integer, RrdAxisDef>();
+    //used to stack plot elements on a per axis basis
+    private final Map<Integer, List<PlotElement>> plotElementsPerAxis = new HashMap<Integer, List<PlotElement>>();
 
     /**
      * Creates RrdGraphDef object and sets default time span (default ending time is 'now',
@@ -123,6 +117,32 @@ public class RrdGraphDef implements RrdGraphConstants {
      */
     public RrdGraphDef() {
         setTimeSpan(Util.getTimestamps(DEFAULT_START, DEFAULT_END));
+        getAxisDef();
+    }
+
+    void addTimeAxisPlotElement(PlotElement e) {
+        plotElements.put(e, primaryYAxis);
+    }
+    void addValueAxisPlotElement(PlotElement e) {
+        plotElements.put(e, RrdGraphConstants.DEFAULT_Y_AXIS);
+    }
+    void addPlotElement(Integer axis, PlotElement e) {
+        getAxisDef(axis);   //ensure there is a corresponding Y axis def
+        plotElements.put(e, axis);
+        plotElementsPerAxis.get(axis).add(e);
+    }
+
+    public int getAxisCount() {
+        return valueAxisDefs.size();
+    }
+    public RrdAxisDef getAxisDef() {
+        return getAxisDef(RrdGraphConstants.DEFAULT_Y_AXIS);
+    }
+    public RrdAxisDef getAxisDef(int yaxis) {
+        if (!valueAxisDefs.containsKey(yaxis)) {
+            addValueAxis(yaxis, new RrdAxisDef());
+        }
+        return valueAxisDefs.get(yaxis);
     }
 
     /**
@@ -263,6 +283,19 @@ public class RrdGraphDef implements RrdGraphConstants {
         valueAxisSetting = new ValueAxisSetting(gridStep, labelFactor);
     }
 
+
+    public void addValueAxis(int index) {
+        RrdAxisDef axisDef =  new RrdAxisDef();
+        axisDef.opposite_side = true;
+        valueAxisDefs.put(index, axisDef);
+    }
+
+
+    public void addValueAxis(int index, RrdAxisDef valueAxisDef) {
+        valueAxisDefs.put(index, valueAxisDef);
+        plotElementsPerAxis.put(index, new ArrayList<PlotElement>());
+    }
+
     /**
      * Places Y grid dynamically based on graph Y range. Algorithm ensures
      * that you always have grid, that there are enough but not too many
@@ -378,9 +411,11 @@ public class RrdGraphDef implements RrdGraphConstants {
      * @param verticalLabel Vertical axis label
      */
     public void setVerticalLabel(String verticalLabel) {
-        this.verticalLabel = verticalLabel;
+        setVerticalLabel(RrdGraphConstants.DEFAULT_Y_AXIS, verticalLabel);
     }
-
+    public void setVerticalLabel(int axis, String verticalLabel) {
+        getAxisDef(axis).verticalLabel = verticalLabel;
+    }
     /**
      * Sets width of the drawing area within the graph. This affects the total
      * size of the image.
@@ -484,10 +519,10 @@ public class RrdGraphDef implements RrdGraphConstants {
      * result in a graph that has a lower limit of -100 or less.  Use this
      * method to expand graphs down.
      *
-     * @param minValue Minimal value displayed on the graph
+     * @param min Minimal value displayed on the graph
      */
-    public void setMinValue(double minValue) {
-        this.minValue = minValue;
+    public void setMinValue(double min) {
+        getAxisDef().min = min;
     }
 
     /**
@@ -498,10 +533,10 @@ public class RrdGraphDef implements RrdGraphConstants {
      * If you want to define an upper-limit which will not move in any
      * event you have to use {@link #setRigid(boolean)} method as well.
      *
-     * @param maxValue Maximal value displayed on the graph.
+     * @param max Maximal value displayed on the graph.
      */
-    public void setMaxValue(double maxValue) {
-        this.maxValue = maxValue;
+    public void setMaxValue(double max) {
+        getAxisDef().max = max;
     }
 
     /**
@@ -533,8 +568,12 @@ public class RrdGraphDef implements RrdGraphConstants {
      * @param logarithmic true, for logarithmic scaling, false otherwise (default).
      */
     public void setLogarithmic(boolean logarithmic) {
-        this.logarithmic = logarithmic;
+        setLogarithmic(RrdGraphConstants.DEFAULT_Y_AXIS , logarithmic);
     }
+    public void setLogarithmic(int yaxis, boolean logarithmic) {
+        getAxisDef(yaxis).logarithmic = logarithmic;
+    }
+
 
     /**
      * Overrides the colors for the standard elements of the graph. The
@@ -798,7 +837,7 @@ public class RrdGraphDef implements RrdGraphConstants {
      * @param consolFun Consolidation function (AVERAGE, MIN, MAX, LAST)
      */
     public void datasource(String name, String rrdPath, String dsName, ConsolFun consolFun) {
-        sources.add(new Def(name, rrdPath, dsName, consolFun));
+         sources.add(new Def(name, rrdPath, dsName, consolFun));
     }
 
     /**
@@ -854,6 +893,7 @@ public class RrdGraphDef implements RrdGraphConstants {
     public void datasource(String name, Plottable plottable) {
         sources.add(new PDef(name, plottable));
     }
+
 
     /**
      * Creates a new 'fetched' datasource. Datasource values are obtained from the
@@ -1124,9 +1164,13 @@ public class RrdGraphDef implements RrdGraphConstants {
      * @param stroke Rule stroke
      */
     public void hrule(double value, Paint color, String legend, BasicStroke stroke) {
+        hrule(RrdGraphConstants.DEFAULT_Y_AXIS, value, color, legend, width);
+    }
+
+    public void hrule(int axis, double value, Paint color, String legend, float width) {
         LegendText legendText = new LegendText(color, legend);
         comments.add(legendText);
-        plotElements.add(new HRule(value, color, legendText, stroke));
+        addPlotElement(axis, new HRule(value, color, legendText, width));
     }
 
     /**
@@ -1173,7 +1217,7 @@ public class RrdGraphDef implements RrdGraphConstants {
     public void vrule(long timestamp, Paint color, String legend, BasicStroke stroke) {
         LegendText legendText = new LegendText(color, legend);
         comments.add(legendText);
-        plotElements.add(new VRule(timestamp, color, legendText, stroke));
+        addTimeAxisPlotElement(new VRule(timestamp, color, legendText, width));
     }
 
     /**
@@ -1196,9 +1240,12 @@ public class RrdGraphDef implements RrdGraphConstants {
      * @param legend    Legend text. Use null to omit the text.
      */
     public void hspan(double start, double end, Paint color, String legend) {
+        hspan(RrdGraphConstants.DEFAULT_Y_AXIS, start,  end,  color,  legend);
+    }
+    public void hspan(int yAxis, double start, double end, Paint color, String legend) {
         LegendText legendText = new LegendText(color, legend);
         comments.add(legendText);
-        plotElements.add(new HSpan(start, end, color, legendText));
+        addPlotElement(yAxis, new HSpan(start, end, color, legendText));
     }
 
     /**
@@ -1223,7 +1270,7 @@ public class RrdGraphDef implements RrdGraphConstants {
     public void vspan(long start, long end, Paint color, String legend) {
         LegendText legendText = new LegendText(color, legend);
         comments.add(legendText);
-        plotElements.add(new VSpan(start, end, color, legendText));
+        addTimeAxisPlotElement(new VSpan(start, end, color, legendText));
     }
 
     /**
@@ -1283,11 +1330,7 @@ public class RrdGraphDef implements RrdGraphConstants {
      * @param boolean true if it will be stacked
      */
     public void line(String srcName, Paint color, String legend, float width, boolean stack) {
-        if (legend != null) {
-            comments.add(new LegendText(color, legend));
-        }
-        SourcedPlotElement parent = stack ? findParent() : null;
-        plotElements.add(new Line(srcName, color, new BasicStroke(width), parent));
+        line(srcName, color, legend, new BasicStroke(width), stack);
     }
 
     /**
@@ -1300,11 +1343,14 @@ public class RrdGraphDef implements RrdGraphConstants {
      * @param boolean true if it will be stacked
      */
     public void line(String srcName, Paint color, String legend, BasicStroke stroke, boolean stack) {
+        line(RrdGraphConstants.DEFAULT_Y_AXIS, srcName, color, legend, width);
+    }
+
+    public void line(int yAxis, String srcName, Paint color, String legend, float width) {
         if (legend != null) {
             comments.add(new LegendText(color, legend));
         }
-        SourcedPlotElement parent = stack ? findParent() : null;
-        plotElements.add(new Line(srcName, color, stroke, parent));
+        addPlotElement(yAxis, new Line(srcName, color, width));
     }
 
     /**
@@ -1315,8 +1361,7 @@ public class RrdGraphDef implements RrdGraphConstants {
      * @param stack
      */
     public void line(double value, Paint color, float width, boolean stack) {
-        SourcedPlotElement parent = stack ? findParent() : null;
-        plotElements.add(new ConstantLine(value, color, new BasicStroke(width), parent));
+        line(value, color, new BasicStroke(width), stack);
     }
 
     /**
@@ -1327,8 +1372,20 @@ public class RrdGraphDef implements RrdGraphConstants {
      * @param stack
      */
     public void line(double value, Paint color, BasicStroke stroke, boolean stack) {
-        SourcedPlotElement parent = stack ? findParent() : null;
-        plotElements.add(new ConstantLine(value, color, stroke, parent));
+        line(RrdGraphConstants.DEFAULT_Y_AXIS, value, color, stroke, stack);
+    }
+
+    /**
+     * Define a line like any other but with constant value, it can be stacked
+     * @param yAxis
+     * @param value
+     * @param color
+     * @param stroke
+     * @param stack
+     */
+    public void line(int yAxis, double value, Paint color, BasicStroke stroke, boolean stack) {
+        SourcedPlotElement parent = stack ? findParent(yAxis) : null;
+        addPlotElement(yAxis, new ConstantLine(value, color, stroke, parent));
     }
 
     /**
@@ -1364,11 +1421,15 @@ public class RrdGraphDef implements RrdGraphConstants {
      * @param boolean true if it will be stacked
      */
     public void area(String srcName, Paint color, String legend, boolean stack) {
+        area(RrdGraphConstants.DEFAULT_Y_AXIS, srcName, color, legend, stack);
+    }
+
+    public void area(int yAxis, String srcName, Paint color, String legend, boolean stack) {
         if (legend != null) {
             comments.add(new LegendText(color, legend));
         }
-        SourcedPlotElement parent = stack ? findParent() : null;
-        plotElements.add(new Area(srcName, color, parent));
+        SourcedPlotElement parent = stack ? findParent(yAxis) : null;
+        addPlotElement(yAxis, new Area(srcName, color, parent));
     }
 
     /**
@@ -1378,8 +1439,19 @@ public class RrdGraphDef implements RrdGraphConstants {
      * @param stack
      */
     public void area(double value, Paint color, boolean stack) {
-        SourcedPlotElement parent = stack ? findParent() : null;
-        plotElements.add(new ConstantArea(value, color, parent));
+        area(RrdGraphConstants.DEFAULT_Y_AXIS, value, color, stack);
+    }
+
+    /**
+     * Add a area like any other but with a constant value, it can be stacked like any other area
+     * @param yAxis
+     * @param value
+     * @param color
+     * @param stack
+     */
+    public void area(int yAxis, double value, Paint color, boolean stack) {
+        SourcedPlotElement parent = stack ? findParent(yAxis) : null;
+        addPlotElement(yAxis, new ConstantArea(value, color, parent));
     }
 
     /**
@@ -1420,18 +1492,23 @@ public class RrdGraphDef implements RrdGraphConstants {
      *                                  graph bellow it.
      */
     public void stack(String srcName, Paint color, String legend) {
-        SourcedPlotElement parent = findParent();
+        stack(RrdGraphConstants.DEFAULT_Y_AXIS, srcName, color, legend);
+    }
+
+    public void stack(int axis, String srcName, Paint color, String legend) {
         if (legend != null) {
             comments.add(new LegendText(color, legend));
         }
-        plotElements.add(new Stack(parent, srcName, color));
+        SourcedPlotElement parent = stack ? findParent(axis) : null;
+        addPlotElement(axis, new Stack(parent, srcName, color));
     }
 
-    private SourcedPlotElement findParent() {
+    private SourcedPlotElement findParent(int axis) {
+        List<PlotElement> pe = plotElementsPerAxis.get(axis);
         // find parent AREA or LINE
         SourcedPlotElement parent = null;
-        for (int i = plotElements.size() - 1; i >= 0; i--) {
-            PlotElement plotElement = plotElements.get(i);
+        for (int i = pe.size() - 1; i >= 0; i--) {
+            PlotElement plotElement = pe.get(i);
             if (plotElement instanceof SourcedPlotElement) {
                 parent = (SourcedPlotElement) plotElement;
                 break;

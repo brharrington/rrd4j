@@ -355,7 +355,10 @@ public interface RrdGraphConstants {
      * Used internally
      */
     int PADDING_VLABEL = 7; // pix
-
+    /**
+     * Used internally
+     */
+    int PADDING_GRID_TRIANGLE_WIDTH = 16; // pix
     /**
      * Stroke used to draw grid
      */
@@ -365,6 +368,11 @@ public interface RrdGraphConstants {
      * Stroke used to draw ticks
      */
     Stroke TICK_STROKE = new BasicStroke(1);
+
+    /**
+     * ID of the default y axis
+     */
+    int DEFAULT_Y_AXIS = 0;
 
     /**
      * Allowed font tag names which can be used in {@link RrdGraphDef#setFont(String, java.awt.Font)} method

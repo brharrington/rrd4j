@@ -768,8 +768,10 @@ public class DataProcessor {
             step = newStep;
         }
         else {
-            // choose step based on the number of pixels (useful for plottable datasources)
-            step = Math.max((tEnd - tStart) / pixelCount, 1);
+            if (step == 0) {
+                // choose step based on the number of pixels (useful for plottable datasources)
+                step = Math.max((tEnd - tStart) / pixelCount, 1);
+            }
         }
     }
 
