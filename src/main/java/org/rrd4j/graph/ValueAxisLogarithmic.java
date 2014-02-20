@@ -32,7 +32,7 @@ class ValueAxisLogarithmic  implements YAxis, RrdGraphConstants {
 
     boolean draw(int axis, AxisImageParameters aim, boolean drawGrid) {
         RrdAxisDef axisDef = gdef.getAxisDef(axis);
-        Font font = gdef.smallFont;
+        Font font = gdef.getFont(FONTTAG_DEFAULT);
         Paint gridColor = gdef.colors[COLOR_GRID];
         Paint mGridColor = gdef.colors[COLOR_MGRID];
         Paint fontColor = gdef.colors[COLOR_FONT];

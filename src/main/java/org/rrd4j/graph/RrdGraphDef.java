@@ -1,13 +1,24 @@
 package org.rrd4j.graph;
 
+import java.awt.BasicStroke;
+import java.awt.Font;
+import java.awt.Paint;
+import java.awt.Stroke;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.TimeZone;
+
 import org.rrd4j.ConsolFun;
 import org.rrd4j.core.FetchData;
 import org.rrd4j.core.Util;
 import org.rrd4j.data.DataProcessor;
 import org.rrd4j.data.Plottable;
-
-import java.awt.*;
-import java.util.*;
+import org.rrd4j.data.Variable;
 
 /**
  * Class which should be used to define new Rrd4j graph. Once constructed and populated with data
@@ -1164,13 +1175,13 @@ public class RrdGraphDef implements RrdGraphConstants {
      * @param stroke Rule stroke
      */
     public void hrule(double value, Paint color, String legend, BasicStroke stroke) {
-        hrule(RrdGraphConstants.DEFAULT_Y_AXIS, value, color, legend, width);
+        hrule(RrdGraphConstants.DEFAULT_Y_AXIS, value, color, legend, stroke);
     }
 
-    public void hrule(int axis, double value, Paint color, String legend, float width) {
+    public void hrule(int axis, double value, Paint color, String legend, BasicStroke stroke) {
         LegendText legendText = new LegendText(color, legend);
         comments.add(legendText);
-        addPlotElement(axis, new HRule(value, color, legendText, width));
+        addPlotElement(axis, new HRule(value, color, legendText, stroke));
     }
 
     /**
@@ -1217,7 +1228,7 @@ public class RrdGraphDef implements RrdGraphConstants {
     public void vrule(long timestamp, Paint color, String legend, BasicStroke stroke) {
         LegendText legendText = new LegendText(color, legend);
         comments.add(legendText);
-        addTimeAxisPlotElement(new VRule(timestamp, color, legendText, width));
+        addTimeAxisPlotElement(new VRule(timestamp, color, legendText, stroke));
     }
 
     /**
@@ -1343,14 +1354,15 @@ public class RrdGraphDef implements RrdGraphConstants {
      * @param boolean true if it will be stacked
      */
     public void line(String srcName, Paint color, String legend, BasicStroke stroke, boolean stack) {
-        line(RrdGraphConstants.DEFAULT_Y_AXIS, srcName, color, legend, width);
+        line(RrdGraphConstants.DEFAULT_Y_AXIS, srcName, color, legend, stroke, stack);
     }
 
-    public void line(int yAxis, String srcName, Paint color, String legend, float width) {
+    public void line(int yAxis, String srcName, Paint color, String legend, BasicStroke stroke, boolean stack) {
         if (legend != null) {
             comments.add(new LegendText(color, legend));
         }
-        addPlotElement(yAxis, new Line(srcName, color, width));
+        SourcedPlotElement parent = stack ? findParent(yAxis) : null;
+        addPlotElement(yAxis, new Line(srcName, color, stroke, parent));
     }
 
     /**
@@ -1499,7 +1511,7 @@ public class RrdGraphDef implements RrdGraphConstants {
         if (legend != null) {
             comments.add(new LegendText(color, legend));
         }
-        SourcedPlotElement parent = stack ? findParent(axis) : null;
+        SourcedPlotElement parent = findParent(axis);
         addPlotElement(axis, new Stack(parent, srcName, color));
     }
 

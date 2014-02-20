@@ -51,7 +51,7 @@ class ValueAxis implements YAxis, RrdGraphConstants {
         RrdAxisDef axisdef = gdef.valueAxisDefs.get(yaxis);
         Paint fontColor = axisdef.color;
         double scaledstep = gridstep / aim.magfact;
-        drawLabel(aim.symbol, axisdef.opposite_side, gridId, scaledstep, im.axisImageParams[yaxis].axisxorigin, y, gdef.smallFont, fontColor, labfmt);
+        drawLabel(aim.symbol, axisdef.opposite_side, gridId, scaledstep, im.axisImageParams[yaxis].axisxorigin, y, gdef.getFont(FONTTAG_DEFAULT), fontColor, labfmt);
     }
 
     void drawLabel(char symbol, boolean opposite, int gridId, double scaledstep, int x, int y, Font font, Paint fontColor, String labfmt) {
@@ -261,7 +261,7 @@ class ValueAxis implements YAxis, RrdGraphConstants {
      */
     private int findLabelFactor(AxisImageParameters aim, YLabel thisYLabel) {
         int pixel = this.getPixelsPerGridline(aim, thisYLabel);
-        int fontHeight = (int) Math.ceil(worker.getFontHeight(gdef.smallFont));
+        int fontHeight = (int) Math.ceil(worker.getFontHeight(gdef.getFont(FONTTAG_DEFAULT)));
         for (int j = 0; j < 4; j++) {
             if (pixel * thisYLabel.labelFacts[j] >= 2 * fontHeight) {
                 return thisYLabel.labelFacts[j];

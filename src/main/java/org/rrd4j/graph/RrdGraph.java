@@ -162,14 +162,14 @@ public class RrdGraph implements RrdGraphConstants {
             double maxAxisValue = im.axisImageParams[axis].ymaxval;
             if (hr.value >= minAxisValue && hr.value <= maxAxisValue) {
                 int y = mapper.ytr(axis, hr.value);
-                worker.drawLine(im.xorigin, y, im.xorigin + im.xsize, y, hr.color, new BasicStroke(hr.width));
+                worker.drawLine(im.xorigin, y, im.xorigin + im.xsize, y, hr.color, hr.stroke);
             }
         }
         else if (pe instanceof VRule) {
             VRule vr = (VRule) pe;
             if (vr.timestamp >= im.start && vr.timestamp <= im.end) {
                 int x = mapper.xtr(vr.timestamp);
-                worker.drawLine(x, im.yorigin, x, im.yorigin - im.ysize, vr.color, new BasicStroke(vr.width));
+                worker.drawLine(x, im.yorigin, x, im.yorigin - im.ysize, vr.color, vr.stroke);
             }
         }
     }
@@ -218,7 +218,7 @@ public class RrdGraph implements RrdGraphConstants {
                 if (verticalLabel != null) {
                     int x = im.axisImageParams[axis].xoriginVerticalLabel;
                     int y = im.yorigin - im.ysize / 2;
-                    int yoffset =  (int) worker.getStringWidth(verticalLabel, gdef.smallFont) / 2;
+                    int yoffset =  (int) worker.getStringWidth(verticalLabel, gdef.getFont(FONTTAG_DEFAULT)) / 2;
                     if (axisDef.opposite_side) {
                         y -= yoffset;
                         worker.transform(x, y, Math.PI / 2);
@@ -226,8 +226,8 @@ public class RrdGraph implements RrdGraphConstants {
                         y += yoffset;
                         worker.transform(x, y, -Math.PI / 2);
                     }
-                    int ascent = (int) worker.getFontAscent(gdef.smallFont);
-                    worker.drawString(verticalLabel, 0, ascent, gdef.smallFont, axisDef.color);
+                    int ascent = (int) worker.getFontAscent(gdef.getFont(FONTTAG_DEFAULT));
+                    worker.drawString(verticalLabel, 0, ascent, gdef.getFont(FONTTAG_DEFAULT), axisDef.color);
                     worker.reset();
                 }
             }
@@ -307,9 +307,9 @@ public class RrdGraph implements RrdGraphConstants {
     private void drawGridError(String err) {
         String msg = err + "No Data Found";
         worker.drawString(msg,
-                im.xgif / 2 - (int) worker.getStringWidth(msg, gdef.largeFont) / 2,
+                im.xgif / 2 - (int) worker.getStringWidth(msg, gdef.getFont(FONTTAG_TITLE)) / 2,
                 (2 * im.yorigin - im.ysize) / 2,
-                gdef.largeFont, gdef.colors[COLOR_FONT]);
+                gdef.getFont(FONTTAG_TITLE), gdef.colors[COLOR_FONT]);
     }
 
 
@@ -346,7 +346,7 @@ public class RrdGraph implements RrdGraphConstants {
                 SourcedPlotElement source = (SourcedPlotElement) pe;
                 double[] y = ytr(axis, source.getValues());
                 if (source instanceof Line) {
-                    worker.drawPolyline(x, y, source.color, new BasicStroke(((Line) source).width));
+                    worker.drawPolyline(x, y, source.color, ((Line) source).stroke);
                 }
                 else if (Area.class.isAssignableFrom(source.getClass())) {
                     if(source.parent == null) {
@@ -447,7 +447,7 @@ public class RrdGraph implements RrdGraphConstants {
 
 
         im.unitslength = gdef.unitsLength;
-        im.yAxisLabelWidth =  (int) (im.unitslength * getSmallFontCharWidth());
+        im.yAxisLabelWidth =  (int) (im.unitslength * getFontCharWidth(FONTTAG_DEFAULT));
         int yAxisVerticalLabelHeight = (int)getSmallFontHeight();
         int xAxisLabelHeight = (int)getSmallFontHeight();
 
@@ -465,7 +465,7 @@ public class RrdGraph implements RrdGraphConstants {
         else {
             im.yorigin = im.ysize + PADDING_TOP;
             if (gdef.title != null) {
-                im.yorigin += getLargeFontHeight() + PADDING_TITLE;
+                im.yorigin += getFontHeight(FONTTAG_TITLE) + PADDING_TITLE;
             }
             im.ygif = im.yorigin + (int) (PADDING_PLOT * getSmallFontHeight());
 
@@ -633,8 +633,8 @@ public class RrdGraph implements RrdGraphConstants {
                     /* measure the amplitude of the function. Make sure that
                             graph boundaries are slightly lower than min vals
                             so we can see amplitude on the graph */
-                    adj = (im.maxval - im.minval) * 0.1;
-                    im.minval -= adj;
+                    adj = (aim.ymaxval - aim.yminval) * 0.1;
+                    aim.yminval -= adj;
                 }
                 else if (gdef.altAutoscaleMax) {
                     /* measure the amplitude of the function. Make sure that

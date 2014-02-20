@@ -20,7 +20,7 @@ class ValueAxisMrtg implements YAxis, RrdGraphConstants {
     public boolean drawTickMarksAndLabels(int axis, AxisImageParameters aim) {return true; }
 
     boolean draw(AxisImageParameters aim) {
-        Font font = gdef.smallFont;
+        Font font = gdef.getFont(FONTTAG_DEFAULT);
         Paint mGridColor = gdef.colors[COLOR_MGRID];
         Paint fontColor = gdef.colors[COLOR_FONT];
         int labelOffset = (int) (worker.getFontAscent(font) / 2);
