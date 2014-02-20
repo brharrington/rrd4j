@@ -2,6 +2,7 @@ package org.rrd4j.demo;
 
 import org.rrd4j.core.*;
 import org.rrd4j.graph.RrdGraph;
+import org.rrd4j.graph.RrdGraphConstants;
 import org.rrd4j.graph.RrdGraphDef;
 
 import java.awt.*;
@@ -23,6 +24,7 @@ public class Demo {
     static final long SEED = 1909752002L;
     static final Random RANDOM = new Random(SEED);
     static final String FILE = "demo";
+    static final String FILE_FORMAT = "gif";
 
     static final long START = Util.getTimestamp(2010, 4, 1);
     static final long END = Util.getTimestamp(2010, 6, 1);
@@ -52,7 +54,7 @@ public class Demo {
         String rrdPath = Util.getRrd4jDemoPath(FILE + ".rrd");
         String xmlPath = Util.getRrd4jDemoPath(FILE + ".xml");
         String rrdRestoredPath = Util.getRrd4jDemoPath(FILE + "_restored.rrd");
-        String imgPath = Util.getRrd4jDemoPath(FILE + ".png");
+        String imgPath = Util.getRrd4jDemoPath(FILE + "." + FILE_FORMAT);
         String logPath = Util.getRrd4jDemoPath(FILE + ".log");
         PrintWriter log = new PrintWriter(new BufferedOutputStream(new FileOutputStream(logPath, false)));
         // creation
@@ -150,7 +152,7 @@ public class Demo {
         println("Creating graph " + Util.getLapTime());
         println("== Creating graph from the second file");
         RrdGraphDef gDef = new RrdGraphDef();
-        gDef.setLocale(Locale.US);
+        gDef.setLocale(Locale.FRANCE);
         gDef.setWidth(IMG_WIDTH);
         gDef.setHeight(IMG_HEIGHT);
         gDef.setFilename(imgPath);
@@ -158,21 +160,25 @@ public class Demo {
         gDef.setEndTime(end);
         gDef.setTitle("Temperatures in May-June 2010");
         gDef.setVerticalLabel("temperature");
+        //gDef.setGrideStroke(new BasicStroke(5));
+        gDef.setColor(RrdGraphConstants.COLOR_XAXIS, Color.BLUE);
+        gDef.setColor(RrdGraphConstants.COLOR_YAXIS, new Color(0, 255, 0, 40));
+        gDef.setLogarithmic(true);
 
         gDef.datasource("sun", rrdRestoredPath, "sun", AVERAGE);
         gDef.datasource("shade", rrdRestoredPath, "shade", AVERAGE);
-        gDef.datasource("median", "sun,shade,+,2,/");
-        gDef.datasource("diff", "sun,shade,-,ABS,-1,*");
-        gDef.datasource("sine", "TIME," + start + ",-," + (end - start) + ",/,2,PI,*,*,SIN,1000,*");
+        //gDef.datasource("median", "sun,shade,+,2,/");
+        //gDef.datasource("diff", "sun,shade,-,ABS,-1,*");
+        //gDef.datasource("sine", "TIME," + start + ",-," + (end - start) + ",/,2,PI,*,*,SIN,1000,*");
 
         gDef.line("sun", Color.GREEN, "sun temp");
         gDef.line("shade", Color.BLUE, "shade temp");
-        gDef.line("median", Color.MAGENTA, "median value");
-        gDef.area("diff", Color.YELLOW, "difference");
-        gDef.line("diff", Color.RED, null);
-        gDef.line("sine", Color.CYAN, "sine fun");
-        gDef.hrule(2568, Color.GREEN, "hrule");
-        gDef.vrule((start + 2 * end) / 3, Color.MAGENTA, "vrule\\c");
+        //gDef.line("median", Color.MAGENTA, "median value");
+        //gDef.area("diff", Color.YELLOW, "difference");
+        //gDef.line("diff", Color.RED, null);
+        //gDef.line("sine", Color.CYAN, "sine fun");
+        //gDef.hrule(2568, Color.GREEN, "hrule");
+        //gDef.vrule((start + 2 * end) / 3, Color.MAGENTA, "vrule\\c");
 
         gDef.comment("\\r");
 
@@ -183,7 +189,7 @@ public class Demo {
 
         gDef.setImageInfo("<img src='%s' width='%d' height = '%d'>");
         gDef.setPoolUsed(false);
-        gDef.setImageFormat("png");
+        gDef.setImageFormat(FILE_FORMAT);
         println("Rendering graph " + Util.getLapTime());
         // create graph finally
         RrdGraph graph = new RrdGraph(gDef);

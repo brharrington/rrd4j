@@ -3,17 +3,25 @@ package org.rrd4j.graph;
 class Mapper {
     private RrdGraphDef gdef;
     private ImageParameters im;
-    private double pixieX, pixieY;
+    private double pixieX;
+    private double[] pixieY;
 
     Mapper(RrdGraph rrdGraph) {
         this.gdef = rrdGraph.gdef;
         this.im = rrdGraph.im;
+        this.pixieY = new double[im.axisImageParams.length];
+
         pixieX = (double) im.xsize / (double) (im.end - im.start);
-        if (!gdef.logarithmic) {
-            pixieY = (double) im.ysize / (im.maxval - im.minval);
-        }
-        else {
-            pixieY = (double) im.ysize / (ValueAxisLogarithmic.log10(im.maxval) - ValueAxisLogarithmic.log10(im.minval));
+
+        for (int yaxis=0; yaxis<pixieY.length; yaxis++) {
+            double minval =  im.axisImageParams[yaxis].yminval;
+            double maxval =  im.axisImageParams[yaxis].ymaxval;
+            if (!im.axisImageParams[yaxis].logarithmic) {
+                pixieY[yaxis] = (double) im.ysize / (maxval - minval);
+            }
+            else {
+                pixieY[yaxis] = (double) im.ysize / (ValueAxisLogarithmic.log10(maxval) - ValueAxisLogarithmic.log10(minval));
+            }
         }
     }
 
@@ -21,17 +29,18 @@ class Mapper {
         return (int) ((double) im.xorigin + pixieX * (mytime - im.start));
     }
 
-    int ytr(double value) {
+    int ytr(int yaxis, double value) {
         double yval;
-        if (!gdef.logarithmic) {
-            yval = im.yorigin - pixieY * (value - im.minval) + 0.5;
+        double yminval = im.axisImageParams[yaxis].yminval;
+        if (!im.axisImageParams[yaxis].logarithmic) {
+            yval = im.yorigin - pixieY[yaxis] * (value - yminval) + 0.5;
         }
         else {
-            if (value < im.minval) {
+            if (value < yminval) {
                 yval = im.yorigin;
             }
             else {
-                yval = im.yorigin - pixieY * (ValueAxisLogarithmic.log10(value) - ValueAxisLogarithmic.log10(im.minval)) + 0.5;
+                yval = im.yorigin - pixieY[yaxis] * (ValueAxisLogarithmic.log10(value) - ValueAxisLogarithmic.log10(yminval)) + 0.5;
             }
         }
         if (!gdef.rigid) {

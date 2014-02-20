@@ -45,7 +45,7 @@ public class RrdDef {
      */
     public static final long DEFAULT_INITIAL_SHIFT = -10L;
 
-    static public final int DEFAULTVERSION = 1;
+    static public final int DEFAULTVERSION = 2;
 
     private String path;
     private long startTime = Util.getTime() + DEFAULT_INITIAL_SHIFT;

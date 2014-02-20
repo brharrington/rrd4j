@@ -1,11 +1,10 @@
 package org.rrd4j.graph;
 
-import java.awt.Font;
-import java.awt.Paint;
+import java.awt.*;
 
 import org.rrd4j.core.Util;
 
-class ValueAxis implements RrdGraphConstants {
+class ValueAxis implements YAxis, RrdGraphConstants {
     private static final YLabel[] ylabels = {
         new YLabel(0.1, 1, 2, 5, 10),
         new YLabel(0.2, 1, 5, 10, 20),
@@ -45,25 +44,74 @@ class ValueAxis implements RrdGraphConstants {
         this.mapper = mapper;
     }
 
-    boolean draw() {
-        Font font = gdef.smallFont;
+
+
+    void drawLabels(int yaxis, AxisImageParameters aim, int gridId, double gridstep, int y, String labfmt) {
+        boolean ok = true;
+
+        RrdAxisDef axisdef = gdef.valueAxisDefs.get(yaxis);
+        Paint fontColor = axisdef.color;
+        double scaledstep = gridstep / aim.magfact;
+        drawLabel(aim.symbol, axisdef.opposite_side, gridId, scaledstep, im.axisImageParams[yaxis].axisxorigin, y, gdef.smallFont, fontColor, labfmt);
+    }
+
+    void drawLabel(char symbol, boolean opposite, int gridId, double scaledstep, int x, int y, Font font, Paint fontColor, String labfmt) {
+
+        String graph_label;
+        int labelOffset = (int) (worker.getFontAscent(font) / 2);
+        double label_value = scaledstep * gridId;
+        if (gridId == 0 || symbol == ' ') {
+            if (scaledstep < 1) {
+                if (gridId != 0 && gdef.altYGrid) {
+                    graph_label = Util.sprintf(gdef.locale, labfmt, label_value);
+                }
+                else {
+                    graph_label = Util.sprintf(gdef.locale, "%4.1f", label_value);
+                }
+            }
+            else {
+                graph_label = Util.sprintf(gdef.locale, "%4.0f", label_value);
+            }
+        }
+        else {
+            if (scaledstep < 1) {
+                graph_label = Util.sprintf(gdef.locale, "%4.1f %c", label_value, symbol);
+            }
+            else {
+                graph_label = Util.sprintf(gdef.locale, "%4.0f %c", label_value, symbol);
+            }
+        }
+
+        int length = (int) (worker.getStringWidth(graph_label, font));
+        if (opposite) {
+            worker.drawString(graph_label, x + PADDING_VLABEL, y + labelOffset, font, fontColor);
+        } else {
+            worker.drawString(graph_label, x - length - PADDING_VLABEL, y + labelOffset, font, fontColor);
+        }
+
+    }
+
+    public boolean drawGrid(int axis, AxisImageParameters aim) { return draw(axis, aim, true);}
+    public boolean drawTickMarksAndLabels(int axis, AxisImageParameters aim) {return draw(axis, aim, false);}
+
+    boolean draw(int yaxis, AxisImageParameters aim, boolean drawGrid) {
         Paint gridColor = gdef.colors[COLOR_GRID];
         Paint mGridColor = gdef.colors[COLOR_MGRID];
-        Paint fontColor = gdef.colors[COLOR_FONT];
-        int labelOffset = (int) (worker.getFontAscent(font) / 2);
+        String labfmt = null;
+
         int labfact = 2;
-        double range = im.maxval - im.minval;
-        double scaledrange = range / im.magfact;
+        double range = aim.ymaxval - aim.yminval;
+        double scaledrange = range / aim.magfact;
         double gridstep;
         if (Double.isNaN(scaledrange)) {
             return false;
         }
-        String labfmt = null;
-        if (Double.isNaN(im.ygridstep)) {
+
+        if (Double.isNaN(aim.ygridstep)) {
             if (gdef.altYGrid) {
                 /* find the value with max number of digits. Get number of digits */
-                int decimals = (int) Math.ceil(Math.log10(Math.max(Math.abs(im.maxval),
-                        Math.abs(im.minval))));
+                int decimals = (int) Math.ceil(Math.log10(Math.max(Math.abs(aim.ymaxval),
+                        Math.abs(aim.yminval))));
                 if (decimals <= 0) /* everything is small. make place for zero */ {
                     decimals = 1;
                 }
@@ -101,62 +149,60 @@ class ValueAxis implements RrdGraphConstants {
                 int minimumLabelCount = 3;
                 YLabel selectedYLabel = null;
                 while(selectedYLabel == null) {
-                    selectedYLabel = findYLabel(minimumLabelCount);
+                    selectedYLabel = findYLabel(yaxis, minimumLabelCount);
                     minimumLabelCount--;
                 }
-                gridstep = selectedYLabel.grid * im.magfact;
-                labfact = findLabelFactor(selectedYLabel);
+                gridstep = selectedYLabel.grid * aim.magfact;
+                labfact = findLabelFactor(aim, selectedYLabel);
             }
         }
         else {
-            gridstep = im.ygridstep;
-            labfact = im.ylabfact;
+            gridstep = aim.ygridstep;
+            labfact = aim.ylabfact;
         }
-        int x0 = im.xorigin, x1 = x0 + im.xsize;
-        int sgrid = (int) (im.minval / gridstep - 1);
-        int egrid = (int) (im.maxval / gridstep + 1);
-        double scaledstep = gridstep / im.magfact;
+        int x0 = im.xorigin;
+        int x1 = x0 + im.xsize;
+        int x0yaxis = im.axisImageParams[yaxis].axisxorigin;
+        int sgrid = (int) (aim.yminval / gridstep - 1);
+        int egrid = (int) (aim.ymaxval / gridstep + 1);
+
         for (int i = sgrid; i <= egrid; i++) {
-            int y = mapper.ytr(gridstep * i);
+            int y = mapper.ytr(yaxis, gridstep * i);
             if (y >= im.yorigin - im.ysize && y <= im.yorigin) {
                 if (i % labfact == 0) {
-                    String graph_label;
-                    if (i == 0 || im.symbol == ' ') {
-                        if (scaledstep < 1) {
-                            if (i != 0 && gdef.altYGrid) {
-                                graph_label = Util.sprintf(gdef.locale, labfmt, scaledstep * i);
-                            }
-                            else {
-                                graph_label = Util.sprintf(gdef.locale, "%4.1f", scaledstep * i);
-                            }
+                    //draw the label values for the axis
+                    drawLabels(yaxis, aim, i, gridstep, y, labfmt);
+
+                    //draw tic mark on y axis
+                    worker.drawLine(x0yaxis - 2, y, x0yaxis + 2, y, mGridColor, gdef.tickStroke);
+
+                    if (drawGrid) {
+                        if (im.axisImageParams.length == 1) {
+                            //draw tic mark on right side of graph corresponding to y0
+                            worker.drawLine(x1 - 2, y, x1 + 2, y, mGridColor, gdef.tickStroke);
                         }
-                        else {
-                            graph_label = Util.sprintf(gdef.locale, "%4.0f", scaledstep * i);
-                        }
+                        //draw horizontal grid line across the width of the grid
+                        worker.drawLine(x0, y, x1, y, mGridColor, gdef.gridStroke);
                     }
-                    else {
-                        if (scaledstep < 1) {
-                            graph_label = Util.sprintf(gdef.locale, "%4.1f %c", scaledstep * i, im.symbol);
-                        }
-                        else {
-                            graph_label = Util.sprintf(gdef.locale, "%4.0f %c", scaledstep * i, im.symbol);
-                        }
-                    }
-                    int length = (int) (worker.getStringWidth(graph_label, font));
-                    worker.drawString(graph_label, x0 - length - PADDING_VLABEL, y + labelOffset, font, fontColor);
-                    worker.drawLine(x0 - 2, y, x0 + 2, y, mGridColor, gdef.tickStroke);
-                    worker.drawLine(x1 - 2, y, x1 + 2, y, mGridColor, gdef.tickStroke);
-                    worker.drawLine(x0, y, x1, y, mGridColor, gdef.gridStroke);
                 }
                 else if (!(gdef.noMinorGrid)) {
-                    worker.drawLine(x0 - 1, y, x0 + 1, y, gridColor, gdef.tickStroke);
-                    worker.drawLine(x1 - 1, y, x1 + 1, y, gridColor, gdef.tickStroke);
-                    worker.drawLine(x0, y, x1, y, gridColor, gdef.gridStroke);
+                    //draw tic mrk on y axis
+                    worker.drawLine(x0yaxis - 1, y, x0yaxis + 1, y, gridColor, gdef.tickStroke);
+
+                    if (drawGrid) {
+                        if (im.axisImageParams.length == 1) {
+                            //draw tic mark on right side of graph corresponding to y0
+                            worker.drawLine(x1 - 1, y, x1 + 1, y, gridColor, gdef.tickStroke);
+                        }
+                        //draw horizontal grid line across the width of the grid
+                         worker.drawLine(x0, y, x1, y, gridColor, gdef.gridStroke);
+                    }
                 }
             }
         }
         return true;
     }
+
 
     /**
      * Finds an acceptable YLabel object for the current graph
@@ -167,22 +213,23 @@ class ValueAxis implements RrdGraphConstants {
      * Returns null if none are acceptable (none the right size or with
      * enough labels)
      */
-    private YLabel findYLabel(int desiredMinimumLabelCount) {
-        double scaledrange = this.getScaledRange();
+    private YLabel findYLabel(int yaxis, int desiredMinimumLabelCount) {
+        AxisImageParameters aim = im.axisImageParams[yaxis];
+        double scaledrange = this.getScaledRange(aim);
         int labelFactor;
         //Check each YLabel definition to see if it's acceptable
         for (int i = 0; ylabels[i].grid > 0; i++) {
             YLabel thisYLabel = ylabels[i];
             //First cut is whether this gridstep would give enough space per gridline
-            if (this.getPixelsPerGridline(thisYLabel) > 5 ) {
+            if (this.getPixelsPerGridline(aim, thisYLabel) > 5 ) {
                 //Yep; now we might have to check the number of labels
-                if(im.minval < 0.0 && im.maxval > 0.0) {
+                if(aim.yminval < 0.0 && aim.ymaxval > 0.0) {
                     //The graph covers positive and negative values, so we need the
                     // desiredMinimumLabelCount number of labels, which is going to
                     // usually be 3, then maybe 2, then only as a last resort, 1. 
                     // So, we need to find out what the label factor would be
                     // if we chose this ylab definition
-                    labelFactor = findLabelFactor(thisYLabel);
+                    labelFactor = findLabelFactor(aim, thisYLabel);
                     if(labelFactor == -1) {
                         //Default to too many to satisfy the label count test, unless we're looking for just 1	
                         // in which case be sure to satisfy the label count test
@@ -213,8 +260,8 @@ class ValueAxis implements RrdGraphConstants {
      * Find the smallest labelFactor acceptable (can fit labels) for the given YLab definition
      * Returns the label factor if one is ok, otherwise returns -1 if none are acceptable
      */
-    private int findLabelFactor(YLabel thisYLabel) {
-        int pixel = this.getPixelsPerGridline(thisYLabel);
+    private int findLabelFactor(AxisImageParameters aim, YLabel thisYLabel) {
+        int pixel = this.getPixelsPerGridline(aim, thisYLabel);
         int fontHeight = (int) Math.ceil(worker.getFontHeight(gdef.smallFont));
         for (int j = 0; j < 4; j++) {
             if (pixel * thisYLabel.labelFacts[j] >= 2 * fontHeight) {
@@ -227,14 +274,14 @@ class ValueAxis implements RrdGraphConstants {
     /**
      * Finds the number of pixels per gridline that the given YLabel definition will result in
      */
-    private int getPixelsPerGridline(YLabel thisYLabel) {
-        double scaledrange = this.getScaledRange();
+    private int getPixelsPerGridline(AxisImageParameters aim, YLabel thisYLabel) {
+        double scaledrange = this.getScaledRange(aim);
         return (int) (im.ysize / (scaledrange / thisYLabel.grid));
     }
 
-    private double getScaledRange() {
-        double range = im.maxval - im.minval;
-        return range / im.magfact;
+    private double getScaledRange(AxisImageParameters aim) {
+        double range = aim.ymaxval - aim.yminval;
+        return range / aim.magfact;
     }
 
     static class YLabel {
