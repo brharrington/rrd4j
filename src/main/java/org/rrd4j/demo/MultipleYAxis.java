@@ -136,13 +136,13 @@ class MultipleYAxis {
 
 
         //Draw Ya data source on default (index 0) axis with legend "Ya metrics"
-        gDef.line(0, "Ya", Color.RED, "Ya metrics", 2.0F);
+        gDef.line(0, "Ya", Color.RED, "Ya metrics", new BasicStroke(2.0F), false);
 
         //Draw Yb data source on second axis (index 1)  with legend "Yb metrics"
-        gDef.line(1, "Yb", Color.GREEN, "Yb metrics", 2.0F);
+        gDef.line(1, "Yb", Color.GREEN, "Yb metrics", new BasicStroke(2.0F), false);
 
         //Draw Yc data source on third axis (index 2)  with legend "Yc metrics"
-        gDef.line(2, "Yc", Color.BLUE, "Yc metrics", 2.0F);
-        gDef.line(2, "Yd", Color.BLUE, "Yd metrics", 2.0F);
+        gDef.line(2, "Yc", Color.BLUE, "Yc metrics", new BasicStroke(2.0F), false);
+        gDef.line(2, "Yd", Color.BLUE, "Yd metrics", new BasicStroke(2.0F), false);
     }
 }
