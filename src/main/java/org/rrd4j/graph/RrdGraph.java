@@ -7,6 +7,10 @@ import java.awt.Graphics;
 import java.awt.Paint;
 import java.awt.Stroke;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import javax.swing.ImageIcon;
 
@@ -70,6 +74,7 @@ public class RrdGraph implements RrdGraphConstants {
             resolveTextElements();
             if (gdef.shouldPlot() && !lazy) {
                 calculatePlotValues();
+                initializeAxesImageParameters();
                 findMinMaxValues();
                 identifySiUnit();
                 expandValueRange();
@@ -81,7 +86,7 @@ public class RrdGraph implements RrdGraphConstants {
                 drawBackground();
                 drawData();
                 drawGrid();
-                drawAxis();
+                drawAxisLines();
                 drawText();
                 drawLegend();
                 drawRules();
@@ -141,32 +146,50 @@ public class RrdGraph implements RrdGraphConstants {
 
     private void drawRules() {
         worker.clip(im.xorigin + 1, im.yorigin - gdef.height - 1, gdef.width - 1, gdef.height + 2);
-        for (PlotElement pe : gdef.plotElements) {
-            if (pe instanceof HRule) {
-                HRule hr = (HRule) pe;
-                if (hr.value >= im.minval && hr.value <= im.maxval) {
-                    int y = mapper.ytr(hr.value);
-                    worker.drawLine(im.xorigin, y, im.xorigin + im.xsize, y, hr.color, hr.stroke);
-                }
-            }
-            else if (pe instanceof VRule) {
-                VRule vr = (VRule) pe;
-                if (vr.timestamp >= im.start && vr.timestamp <= im.end) {
-                    int x = mapper.xtr(vr.timestamp);
-                    worker.drawLine(x, im.yorigin, x, im.yorigin - im.ysize, vr.color, vr.stroke);
-                }
-            }
+        for (Map.Entry<PlotElement, Integer> entry : gdef.plotElements.entrySet())
+        {
+            PlotElement plotElement = entry.getKey();
+            int axis = entry.getValue();
+            drawRule(axis, plotElement);
         }
         worker.reset();
+    }
+    private void drawRule(int axis, PlotElement pe) {
+
+        if (pe instanceof HRule) {
+            HRule hr = (HRule) pe;
+            double minAxisValue = im.axisImageParams[axis].yminval;
+            double maxAxisValue = im.axisImageParams[axis].ymaxval;
+            if (hr.value >= minAxisValue && hr.value <= maxAxisValue) {
+                int y = mapper.ytr(axis, hr.value);
+                worker.drawLine(im.xorigin, y, im.xorigin + im.xsize, y, hr.color, hr.stroke);
+            }
+        }
+        else if (pe instanceof VRule) {
+            VRule vr = (VRule) pe;
+            if (vr.timestamp >= im.start && vr.timestamp <= im.end) {
+                int x = mapper.xtr(vr.timestamp);
+                worker.drawLine(x, im.yorigin, x, im.yorigin - im.ysize, vr.color, vr.stroke);
+            }
+        }
     }
 
     private void drawSpans() {
         worker.clip(im.xorigin + 1, im.yorigin - gdef.height - 1, gdef.width - 1, gdef.height + 2);
-        for (PlotElement pe : gdef.plotElements) {
+        for (Map.Entry<PlotElement, Integer> entry : gdef.plotElements.entrySet())
+        {
+            PlotElement plotElement = entry.getKey();
+            int axis = entry.getValue();
+            drawSpan(axis, plotElement);
+        }
+        worker.reset();
+    }
+    private void drawSpan(int valueAxis, PlotElement pe) {
+
             if (pe instanceof HSpan) {
                 HSpan hr = (HSpan) pe;
-                int ys = mapper.ytr(hr.start);
-                int ye = mapper.ytr(hr.end);
+                int ys = mapper.ytr(valueAxis, hr.start);
+                int ye = mapper.ytr(valueAxis, hr.end);
                 int height = ys - ye;
                 worker.fillRect(im.xorigin, ys - height, im.xsize, height, hr.color);
             }
@@ -176,8 +199,6 @@ public class RrdGraph implements RrdGraphConstants {
                 int xe = mapper.xtr(vr.end);
                 worker.fillRect(xs, im.yorigin - im.ysize, xe - xs, im.ysize, vr.color);
             }
-        }
-        worker.reset();
     }
 
     private void drawText() {
@@ -188,22 +209,45 @@ public class RrdGraph implements RrdGraphConstants {
                 int y = PADDING_TOP + (int) worker.getFontAscent(gdef.getFont(FONTTAG_TITLE));
                 worker.drawString(gdef.title, x, y, gdef.getFont(FONTTAG_TITLE), gdef.colors[COLOR_FONT]);
             }
-            if (gdef.verticalLabel != null) {
-                int x = PADDING_LEFT;
-                int y = im.yorigin - im.ysize / 2 + (int) worker.getStringWidth(gdef.verticalLabel, gdef.getFont(FONTTAG_UNIT)) / 2;
-                int ascent = (int) worker.getFontAscent(gdef.getFont(FONTTAG_UNIT));
-                worker.transform(x, y, -Math.PI / 2);
-                worker.drawString(gdef.verticalLabel, 0, ascent, gdef.getFont(FONTTAG_UNIT), gdef.colors[COLOR_FONT]);
-                worker.reset();
+
+            for (Map.Entry<Integer, RrdAxisDef> entry : gdef.valueAxisDefs.entrySet())
+            {
+                int axis = entry.getKey();
+                RrdAxisDef axisDef = entry.getValue();
+                String verticalLabel = axisDef.verticalLabel;
+                if (verticalLabel != null) {
+                    int x = im.axisImageParams[axis].xoriginVerticalLabel;
+                    int y = im.yorigin - im.ysize / 2;
+                    int yoffset =  (int) worker.getStringWidth(verticalLabel, gdef.getFont(FONTTAG_DEFAULT)) / 2;
+                    if (axisDef.opposite_side) {
+                        y -= yoffset;
+                        worker.transform(x, y, Math.PI / 2);
+                    } else {
+                        y += yoffset;
+                        worker.transform(x, y, -Math.PI / 2);
+                    }
+                    int ascent = (int) worker.getFontAscent(gdef.getFont(FONTTAG_DEFAULT));
+                    worker.drawString(verticalLabel, 0, ascent, gdef.getFont(FONTTAG_DEFAULT), axisDef.color);
+                    worker.reset();
+                }
             }
             worker.setTextAntiAliasing(false);
         }
     }
 
+
+    /*
+     * draws the horizontal grid lines based on the primary (default) y axis
+     * and draws the labels of each of the y axis based on the scale of the
+     * particular axis
+     */
+
     private void drawGrid() {
         if (!gdef.onlyGraph) {
             worker.setTextAntiAliasing(gdef.textAntiAliasing);
-            Paint shade1 = gdef.colors[COLOR_SHADEA], shade2 = gdef.colors[COLOR_SHADEB];
+            //draw rectangular border around the entire image including the graph, axes,  and legends
+            Paint shade1 = gdef.colors[COLOR_SHADEA];
+            Paint shade2 = gdef.colors[COLOR_SHADEB];
             Stroke borderStroke = new BasicStroke(1);
             worker.drawLine(0, 0, im.xgif - 1, 0, shade1, borderStroke);
             worker.drawLine(1, 1, im.xgif - 2, 1, shade1, borderStroke);
@@ -213,44 +257,96 @@ public class RrdGraph implements RrdGraphConstants {
             worker.drawLine(0, im.ygif - 1, im.xgif - 1, im.ygif - 1, shade2, borderStroke);
             worker.drawLine(im.xgif - 2, 1, im.xgif - 2, im.ygif - 2, shade2, borderStroke);
             worker.drawLine(1, im.ygif - 2, im.xgif - 2, im.ygif - 2, shade2, borderStroke);
+
             if (gdef.drawXGrid) {
+                //draw vertical grid lines and time axis labels
                 new TimeAxis(this).draw();
             }
+
             if (gdef.drawYGrid) {
-                boolean ok;
-                if (gdef.altYMrtg) {
-                    ok = new ValueAxisMrtg(this).draw();
+                //draw major and minor horizontal grid lines for the primary axis
+                if (!drawGrid(DEFAULT_Y_AXIS, im.axisImageParams[DEFAULT_Y_AXIS])) {
+                    drawGridError("Error drawing primary axis: ");
                 }
-                else if (gdef.logarithmic) {
-                    ok = new ValueAxisLogarithmic(this).draw();
-                }
-                else {
-                    ok = new ValueAxis(this).draw();
-                }
-                if (!ok) {
-                    String msg = "No Data Found";
-                    worker.drawString(msg,
-                            im.xgif / 2 - (int) worker.getStringWidth(msg, gdef.getFont(FONTTAG_TITLE)) / 2,
-                            (2 * im.yorigin - im.ysize) / 2,
-                            gdef.getFont(FONTTAG_TITLE), gdef.colors[COLOR_FONT]);
+
+                //draw horizontal grid tics and value labels for each remaining value axis (y-axis)
+                for (int i=1; i<im.axisImageParams.length; i++) {
+                    if (!drawTickMarksAndLabels(i, im.axisImageParams[i])) {
+                        drawGridError("Error drawing axis " + i + ": ");
+                    }
                 }
             }
             worker.setTextAntiAliasing(false);
         }
     }
 
+    private boolean drawGrid(int axis, AxisImageParameters aim) {
+        if (gdef.altYMrtg) {
+            return new ValueAxisMrtg(this).drawGrid(axis, aim);
+        }
+        else if (aim.logarithmic) {
+            return new ValueAxisLogarithmic(this).drawGrid(axis, aim);
+        }
+        else {
+            return new ValueAxis(this).drawGrid(axis, aim);
+        }
+    }
+
+    private boolean drawTickMarksAndLabels(int axis, AxisImageParameters aim) {
+        if (gdef.altYMrtg) {
+            return new ValueAxisMrtg(this).drawTickMarksAndLabels(axis, aim);
+        }
+        else if (aim.logarithmic) {
+            return new ValueAxisLogarithmic(this).drawTickMarksAndLabels(axis, aim);
+        }
+        else {
+            return new ValueAxis(this).drawTickMarksAndLabels(axis, aim);
+        }
+    }
+
+    private void drawGridError(String err) {
+        String msg = err + "No Data Found";
+        worker.drawString(msg,
+                im.xgif / 2 - (int) worker.getStringWidth(msg, gdef.getFont(FONTTAG_TITLE)) / 2,
+                (2 * im.yorigin - im.ysize) / 2,
+                gdef.getFont(FONTTAG_TITLE), gdef.colors[COLOR_FONT]);
+    }
+
+
+    private void initializeAxesImageParameters() {
+        im.axisImageParams = new AxisImageParameters[gdef.valueAxisDefs.size()];
+        for (int i=0; i<im.axisImageParams.length; i++) {
+            AxisImageParameters aim  = new AxisImageParameters();
+            RrdAxisDef axisDef = gdef.getAxisDef(i);
+            if (axisDef.color == null) {
+                axisDef.color = gdef.colors[COLOR_FONT];
+            }
+            aim.logarithmic = axisDef.logarithmic;
+            aim.ymaxval = axisDef.max;
+            aim.yminval = axisDef.min;
+            im.axisImageParams[i] = aim;
+        }
+    }
+
     private void drawData() {
         worker.setAntiAliasing(gdef.antiAliasing);
         worker.clip(im.xorigin, im.yorigin - gdef.height - 1, gdef.width, gdef.height + 2);
-        double areazero = mapper.ytr((im.minval > 0.0) ? im.minval : (im.maxval < 0.0) ? im.maxval : 0.0);
-        double[] x = xtr(dproc.getTimestamps()), lastY = null;
-        // draw line, area and stack
-        for (PlotElement plotElement : gdef.plotElements) {
-            if (plotElement instanceof SourcedPlotElement) {
-                SourcedPlotElement source = (SourcedPlotElement) plotElement;
-                double[] y = ytr(source.getValues());
-                if (Line.class.isAssignableFrom(source.getClass())) {
-                    worker.drawPolyline(x, y, source.color, ((Line)source).stroke );
+        double[] x = xtr(dproc.getTimestamps());
+        double[] lastY = null;
+        double[] bottomY = null;
+
+        for (Map.Entry<PlotElement, Integer> entry : gdef.plotElements.entrySet())
+        {
+            PlotElement pe = entry.getKey();
+            int axis = entry.getValue();
+            AxisImageParameters aim = im.axisImageParams[axis];
+            double areazero = mapper.ytr(axis, (aim.yminval > 0.0) ? aim.yminval : (aim.ymaxval < 0.0) ? aim.ymaxval : 0.0);
+            // draw line, area and stack
+            if (pe instanceof SourcedPlotElement) {
+                SourcedPlotElement source = (SourcedPlotElement) pe;
+                double[] y = ytr(axis, source.getValues());
+                if (source instanceof Line) {
+                    worker.drawPolyline(x, y, source.color, ((Line) source).stroke);
                 }
                 else if (Area.class.isAssignableFrom(source.getClass())) {
                     if(source.parent == null) {
@@ -270,7 +366,8 @@ public class RrdGraph implements RrdGraphConstants {
                     }
                     else {
                         // area
-                        worker.fillPolygon(x, lastY, y, stack.color);
+                        bottomY = floor(areazero, lastY);
+                        worker.fillPolygon(x, bottomY, y, stack.color);
                         worker.drawPolyline(x, lastY, stack.getParentColor(), new BasicStroke(0));
                     }
                 }
@@ -285,46 +382,41 @@ public class RrdGraph implements RrdGraphConstants {
         worker.setAntiAliasing(false);
     }
 
-    private void drawAxis() {
+    //draws the axis grid lines on the left, right, and bottom
+    private void drawAxisLines() {
         if (!gdef.onlyGraph) {
             Paint gridColor = gdef.colors[COLOR_GRID];
             Paint xaxisColor = gdef.colors[COLOR_XAXIS];
             Paint yaxisColor = gdef.colors[COLOR_YAXIS];
             Paint arrowColor = gdef.colors[COLOR_ARROW];
             Stroke stroke = new BasicStroke(1);
+
+            //vertical line along right edge of the grid
             worker.drawLine(im.xorigin + im.xsize, im.yorigin, im.xorigin + im.xsize, im.yorigin - im.ysize,
                     gridColor, stroke);
+            //horizontal line along top edge of the grid
             worker.drawLine(im.xorigin, im.yorigin - im.ysize, im.xorigin + im.xsize, im.yorigin - im.ysize,
                     gridColor, stroke);
+
+            //draw value axis as a horizontal line along the bottom edge of the grid
             worker.drawLine(im.xorigin - 4, im.yorigin, im.xorigin + im.xsize + 4, im.yorigin,
                     xaxisColor, stroke);
-            worker.drawLine(im.xorigin, im.yorigin + 4, im.xorigin, im.yorigin - im.ysize - 4,
-                    yaxisColor, stroke);
-            //Do X axis arrow
-            double[] Xarrow_x = {
-                    im.xorigin + im.xsize + 4,
-                    im.xorigin + im.xsize + 9,
-                    im.xorigin + im.xsize + 4,
-            };
-            double[] Xarrow_y = {
-                    im.yorigin - 3,
-                    im.yorigin + 0,
-                    im.yorigin + 3,
-            };
-            worker.fillPolygon(Xarrow_x, im.yorigin + 3, Xarrow_y, arrowColor);
-            
-            //Do y axis arrow
-            double[] Yarrow_x = {
-                    im.xorigin - 3,
-                    im.xorigin,
-                    im.xorigin + 3,
-            };
-            double[] Yarrow_y = {
-                    im.yorigin - im.ysize - 4,
-                    im.yorigin - im.ysize - 9,
-                    im.yorigin - im.ysize - 4,
-            };
-            worker.fillPolygon(Yarrow_x, im.yorigin - im.ysize - 4, Yarrow_y, arrowColor);
+
+            //draw vertical line for each y axis
+            for (int i=0; i<im.axisImageParams.length; i++) {
+                int axisxorigin = im.axisImageParams[i].axisxorigin;
+                worker.drawLine(axisxorigin, im.yorigin, axisxorigin, im.yorigin - im.ysize, yaxisColor, stroke);
+            }
+
+            //draw value axis arrow
+            if ((gdef.valueAxisDefs.size() == 1) && (!gdef.valueAxisDefs.get(DEFAULT_Y_AXIS).opposite_side)) {
+                worker.drawLine(im.xorigin + im.xsize + 4, im.yorigin - 3, im.xorigin + im.xsize + 4, im.yorigin + 3,
+                        arrowColor, stroke);
+                worker.drawLine(im.xorigin + im.xsize + 4, im.yorigin - 3, im.xorigin + im.xsize + 9, im.yorigin,
+                        arrowColor, stroke);
+                worker.drawLine(im.xorigin + im.xsize + 4, im.yorigin + 3, im.xorigin + im.xsize + 9, im.yorigin,
+                        arrowColor, stroke);
+            }
         }
     }
 
@@ -348,49 +440,112 @@ public class RrdGraph implements RrdGraphConstants {
         }
     }
 
+
     private void initializeLimits() {
         im.xsize = gdef.width;
         im.ysize = gdef.height;
+
+
         im.unitslength = gdef.unitsLength;
+        im.yAxisLabelWidth =  (int) (im.unitslength * getFontCharWidth(FONTTAG_DEFAULT));
+        int yAxisVerticalLabelHeight = (int)getSmallFontHeight();
+        int xAxisLabelHeight = (int)getSmallFontHeight();
+
+        im.nbrLeftAxis = 0;
+        im.nbrRightAxis = 0;
 
         if (gdef.onlyGraph) {
-            im.xorigin = 0;
-        }
-        else {
-            im.xorigin = (int) (PADDING_LEFT + im.unitslength * getFontCharWidth(FontTag.UNIT));
-        }
 
-        if (!gdef.onlyGraph && gdef.verticalLabel != null) {
-            im.xorigin += getFontHeight(FONTTAG_UNIT);
-        }
-
-        if (gdef.onlyGraph) {
             im.yorigin = im.ysize;
-        }
-        else {
-            im.yorigin = PADDING_TOP + im.ysize;
-        }
-
-        mapper = new Mapper(this);
-
-        if (!gdef.onlyGraph && gdef.title != null) {
-            im.yorigin += getFontHeight(FONTTAG_TITLE) + PADDING_TITLE;
-        }
-
-        if (gdef.onlyGraph) {
-            im.xgif = im.xsize;
             im.ygif = im.yorigin;
+
+            im.xorigin = 0;
+            im.xgif = im.xsize;
         }
         else {
-            im.xgif = PADDING_RIGHT + im.xsize + im.xorigin;
-            im.ygif = im.yorigin + (int) (PADDING_PLOT * getFontHeight(FONTTAG_DEFAULT));
+            im.yorigin = im.ysize + PADDING_TOP;
+            if (gdef.title != null) {
+                im.yorigin += getFontHeight(FONTTAG_TITLE) + PADDING_TITLE;
+            }
+            im.ygif = im.yorigin + (int) (PADDING_PLOT * getSmallFontHeight());
+
+            if (gdef.valueAxisDefs.size() == 1) {
+                im.xorigin = PADDING_LEFT ;
+                im.axisImageParams[DEFAULT_Y_AXIS].xoriginVerticalLabel = PADDING_LEFT;
+                if (gdef.valueAxisDefs.get(DEFAULT_Y_AXIS).getVerticalLabel() != null) {
+                    im.xorigin += yAxisVerticalLabelHeight;
+                }
+                im.xorigin += + im.yAxisLabelWidth;
+                im.axisImageParams[DEFAULT_Y_AXIS].axisxorigin = im.xorigin;
+
+                im.xgif = im.xorigin + im.xsize + PADDING_GRID_TRIANGLE_WIDTH;
+
+            }  else {
+
+                 Map<Integer, RrdAxisDef> leftAxisDefs = new HashMap<Integer, RrdAxisDef>();
+                 Map<Integer, RrdAxisDef> rightAxisDefs = new HashMap<Integer, RrdAxisDef>();
+
+                for (Map.Entry<Integer, RrdAxisDef> entry : gdef.valueAxisDefs.entrySet()) {
+                    RrdAxisDef axisDef = entry.getValue();
+                    if (axisDef.opposite()) {
+                        rightAxisDefs.put(entry.getKey(), entry.getValue());
+                    } else {
+                        leftAxisDefs.put(entry.getKey(), entry.getValue());
+                    }
+                }
+                im.xorigin = calculateYAxisXLeft(leftAxisDefs, 0, im.yAxisLabelWidth, yAxisVerticalLabelHeight);
+                int xright = calculateYAxisXRight(rightAxisDefs, im.xorigin + im.xsize, im.yAxisLabelWidth, yAxisVerticalLabelHeight);
+
+                im.xgif = xright;// + PADDING_RIGHT/2;
+            }
         }
+        mapper = new Mapper(this);
+    }
+    private int  calculateYAxisXLeft(Map<Integer, RrdAxisDef> axisDefs, int xYaxis, int yAxisLabelWidth, int verticalLabelHeight) {
+        int x = xYaxis;
+
+        for (int axis = im.axisImageParams.length - 1; axis >= 0; axis--) {
+            if (axisDefs.containsKey(axis)) {
+                RrdAxisDef axisDef = axisDefs.get(axis);
+
+                x += PADDING_LEFT;
+                if (axisDef.getVerticalLabel() != null) {
+                    im.axisImageParams[axis].xoriginVerticalLabel = x;
+                    x += verticalLabelHeight;// + PADDING_RIGHT/2 ;
+                }
+                x += im.yAxisLabelWidth;
+                im.axisImageParams[axis].axisxorigin = x;
+            }
+        }
+        return x;  //x coordinate for inner-most axis on the left side
+    }
+    private int  calculateYAxisXRight(Map<Integer, RrdAxisDef> axisDefs, int xYaxis, int yAxisLabelWidth, int verticalLabelHeight) {
+        int x = xYaxis;
+
+        for (int axis = 0; axis <= im.axisImageParams.length - 1; axis++) {
+            if (axisDefs.containsKey(axis)) {
+                RrdAxisDef axisDef = axisDefs.get(axis);
+
+                im.axisImageParams[axis].axisxorigin = x;
+                x += PADDING_VLABEL + yAxisLabelWidth;
+                if (axisDef.getVerticalLabel() != null) {
+                    im.axisImageParams[axis].xoriginVerticalLabel = x + PADDING_RIGHT/2;
+                    x += verticalLabelHeight + PADDING_RIGHT ;
+                }
+            }
+        }
+        return x;  //x coordinate for next right axis
     }
 
     private void removeOutOfRangeRules() {
-        for (PlotElement plotElement : gdef.plotElements) {
+        for (Map.Entry<PlotElement, Integer> entry : gdef.plotElements.entrySet())
+        {
+            PlotElement plotElement = entry.getKey();
+            int axis = entry.getValue();
+
             if (plotElement instanceof HRule) {
-                ((HRule) plotElement).setLegendVisibility(im.minval, im.maxval, gdef.forceRulesLegend);
+                AxisImageParameters aim = im.axisImageParams[axis];
+                ((HRule) plotElement).setLegendVisibility(aim.yminval, aim.ymaxval, gdef.forceRulesLegend);
             }
             else if (plotElement instanceof VRule) {
                 ((VRule) plotElement).setLegendVisibility(im.start, im.end, gdef.forceRulesLegend);
@@ -399,9 +554,14 @@ public class RrdGraph implements RrdGraphConstants {
     }
 
     private void removeOutOfRangeSpans() {
-        for (PlotElement plotElement : gdef.plotElements) {
+        for (Map.Entry<PlotElement, Integer> entry : gdef.plotElements.entrySet())
+        {
+            PlotElement plotElement = entry.getKey();
+            int axis = entry.getValue();
+
             if (plotElement instanceof HSpan) {
-                ((HSpan) plotElement).setLegendVisibility(im.minval, im.maxval, gdef.forceRulesLegend);
+                AxisImageParameters aim = im.axisImageParams[axis];
+                ((HSpan) plotElement).setLegendVisibility(aim.yminval, aim.ymaxval, gdef.forceRulesLegend);
             }
             else if (plotElement instanceof VSpan) {
                 ((VSpan) plotElement).setLegendVisibility(im.start, im.end, gdef.forceRulesLegend);
@@ -410,42 +570,48 @@ public class RrdGraph implements RrdGraphConstants {
     }
 
     private void expandValueRange() {
-        im.ygridstep = (gdef.valueAxisSetting != null) ? gdef.valueAxisSetting.gridStep : Double.NaN;
-        im.ylabfact = (gdef.valueAxisSetting != null) ? gdef.valueAxisSetting.labelFactor : 0;
-        if (!gdef.rigid && !gdef.logarithmic) {
+        for (int i=0; i<im.axisImageParams.length; i++) {
+            expandValueRange(im.axisImageParams[i]);
+        }
+    }
+
+    private void expandValueRange(AxisImageParameters aim) {
+        aim.ygridstep = (gdef.valueAxisSetting != null) ? gdef.valueAxisSetting.gridStep : Double.NaN;
+        aim.ylabfact = (gdef.valueAxisSetting != null) ? gdef.valueAxisSetting.labelFactor : 0;
+        if (!gdef.rigid && !aim.logarithmic) {
             double scaled_min, scaled_max, adj;
-            if (Double.isNaN(im.ygridstep)) {
+            if (Double.isNaN(aim.ygridstep)) {
                 if (gdef.altYMrtg) { /* mrtg */
-                    im.decimals = Math.ceil(Math.log10(Math.max(Math.abs(im.maxval), Math.abs(im.minval))));
-                    im.quadrant = 0;
-                    if (im.minval < 0) {
-                        im.quadrant = 2;
-                        if (im.maxval <= 0) {
-                            im.quadrant = 4;
+                    aim.decimals = Math.ceil(Math.log10(Math.max(Math.abs(aim.ymaxval), Math.abs(aim.yminval))));
+                    aim.quadrant = 0;
+                    if (aim.yminval < 0) {
+                        aim.quadrant = 2;
+                        if (aim.ymaxval <= 0) {
+                            aim.quadrant = 4;
                         }
                     }
-                    switch (im.quadrant) {
+                    switch (aim.quadrant) {
                     case 2:
-                        im.scaledstep = Math.ceil(50 * Math.pow(10, -(im.decimals)) * Math.max(Math.abs(im.maxval),
-                                Math.abs(im.minval))) * Math.pow(10, im.decimals - 2);
-                        scaled_min = -2 * im.scaledstep;
-                        scaled_max = 2 * im.scaledstep;
+                        aim.scaledstep = Math.ceil(50 * Math.pow(10, -(aim.decimals)) * Math.max(Math.abs(aim.ymaxval),
+                                Math.abs(aim.yminval))) * Math.pow(10, aim.decimals - 2);
+                        scaled_min = -2 * aim.scaledstep;
+                        scaled_max = 2 * aim.scaledstep;
                         break;
                     case 4:
-                        im.scaledstep = Math.ceil(25 * Math.pow(10,
-                                -(im.decimals)) * Math.abs(im.minval)) * Math.pow(10, im.decimals - 2);
-                        scaled_min = -4 * im.scaledstep;
+                        aim.scaledstep = Math.ceil(25 * Math.pow(10,
+                                -(aim.decimals)) * Math.abs(aim.yminval)) * Math.pow(10, aim.decimals - 2);
+                        scaled_min = -4 * aim.scaledstep;
                         scaled_max = 0;
                         break;
                     default: /* quadrant 0 */
-                        im.scaledstep = Math.ceil(25 * Math.pow(10, -(im.decimals)) * im.maxval) *
-                        Math.pow(10, im.decimals - 2);
+                        aim.scaledstep = Math.ceil(25 * Math.pow(10, -(aim.decimals)) * aim.ymaxval) *
+                        Math.pow(10, aim.decimals - 2);
                         scaled_min = 0;
-                        scaled_max = 4 * im.scaledstep;
+                        scaled_max = 4 * aim.scaledstep;
                         break;
                     }
-                    im.minval = scaled_min;
-                    im.maxval = scaled_max;
+                    aim.yminval = scaled_min;
+                    aim.ymaxval = scaled_max;
                 }
                 else if (gdef.altAutoscale || (gdef.altAutoscaleMin && gdef.altAutoscaleMax)) {
                     /* measure the amplitude of the function. Make sure that
@@ -453,128 +619,154 @@ public class RrdGraph implements RrdGraphConstants {
                             so we can see amplitude on the graph */
                     double delt, fact;
 
-                    delt = im.maxval - im.minval;
+                    delt = aim.ymaxval - aim.yminval;
                     adj = delt * 0.1;
                     fact = 2.0 * Math.pow(10.0,
-                            Math.floor(Math.log10(Math.max(Math.abs(im.minval), Math.abs(im.maxval)))) - 2);
+                            Math.floor(Math.log10(Math.max(Math.abs(aim.yminval), Math.abs(aim.ymaxval)))) - 2);
                     if (delt < fact) {
                         adj = (fact - delt) * 0.55;
                     }
-                    im.minval -= adj;
-                    im.maxval += adj;
+                    aim.yminval -= adj;
+                    aim.ymaxval += adj;
                 }
                 else if (gdef.altAutoscaleMin) {
                     /* measure the amplitude of the function. Make sure that
                             graph boundaries are slightly lower than min vals
                             so we can see amplitude on the graph */
-                    adj = (im.maxval - im.minval) * 0.1;
-                    im.minval -= adj;
+                    adj = (aim.ymaxval - aim.yminval) * 0.1;
+                    aim.yminval -= adj;
                 }
                 else if (gdef.altAutoscaleMax) {
                     /* measure the amplitude of the function. Make sure that
                             graph boundaries are slightly higher than max vals
                             so we can see amplitude on the graph */
-                    adj = (im.maxval - im.minval) * 0.1;
-                    im.maxval += adj;
+                    adj = (aim.ymaxval - aim.yminval) * 0.1;
+                    aim.ymaxval += adj;
                 }
                 else {
-                    scaled_min = im.minval / im.magfact;
-                    scaled_max = im.maxval / im.magfact;
+                    scaled_min = aim.yminval / aim.magfact;
+                    scaled_max = aim.ymaxval / aim.magfact;
                     for (int i = 1; SENSIBLE_VALUES[i] > 0; i++) {
                         if (SENSIBLE_VALUES[i - 1] >= scaled_min && SENSIBLE_VALUES[i] <= scaled_min) {
-                            im.minval = SENSIBLE_VALUES[i] * im.magfact;
+                            aim.yminval = SENSIBLE_VALUES[i] * aim.magfact;
                         }
                         if (-SENSIBLE_VALUES[i - 1] <= scaled_min && -SENSIBLE_VALUES[i] >= scaled_min) {
-                            im.minval = -SENSIBLE_VALUES[i - 1] * im.magfact;
+                            aim.yminval = -SENSIBLE_VALUES[i - 1] * aim.magfact;
                         }
                         if (SENSIBLE_VALUES[i - 1] >= scaled_max && SENSIBLE_VALUES[i] <= scaled_max) {
-                            im.maxval = SENSIBLE_VALUES[i - 1] * im.magfact;
+                            aim.ymaxval = SENSIBLE_VALUES[i - 1] * aim.magfact;
                         }
                         if (-SENSIBLE_VALUES[i - 1] <= scaled_max && -SENSIBLE_VALUES[i] >= scaled_max) {
-                            im.maxval = -SENSIBLE_VALUES[i] * im.magfact;
+                            aim.ymaxval = -SENSIBLE_VALUES[i] * aim.magfact;
                         }
                     }
                 }
             }
             else {
-                im.minval = (double) im.ylabfact * im.ygridstep *
-                        Math.floor(im.minval / ((double) im.ylabfact * im.ygridstep));
-                im.maxval = (double) im.ylabfact * im.ygridstep *
-                        Math.ceil(im.maxval / ((double) im.ylabfact * im.ygridstep));
+                aim.yminval = (double) aim.ylabfact * aim.ygridstep *
+                        Math.floor(aim.yminval / ((double) aim.ylabfact * aim.ygridstep));
+                aim.ymaxval = (double) aim.ylabfact * aim.ygridstep *
+                        Math.ceil(aim.ymaxval / ((double) aim.ylabfact * aim.ygridstep));
             }
 
         }
     }
 
     private void identifySiUnit() {
-        im.unitsexponent = gdef.unitsExponent;
-        im.base = gdef.base;
-        if (!gdef.logarithmic) {
+        for (int i=0; i<im.axisImageParams.length; i++) {
+            identifySiUnit(im.axisImageParams[i]);
+        }
+    }
+    private void identifySiUnit(AxisImageParameters aim) {
+        aim.unitsexponent = gdef.unitsExponent;
+        aim.base = gdef.base;
+        if (!aim.logarithmic) {
             int symbcenter = 6;
             double digits;
-            if (im.unitsexponent != Integer.MAX_VALUE) {
-                digits = Math.floor(im.unitsexponent / 3);
+            if (aim.unitsexponent != Integer.MAX_VALUE) {
+                digits = Math.floor(aim.unitsexponent / 3);
             }
             else {
-                digits = Math.floor(Math.log(Math.max(Math.abs(im.minval), Math.abs(im.maxval))) / Math.log(im.base));
+                digits = Math.floor(Math.log(Math.max(Math.abs(aim.yminval), Math.abs(aim.ymaxval))) / Math.log(aim.base));
             }
-            im.magfact = Math.pow(im.base, digits);
+            aim.magfact = Math.pow(aim.base, digits);
             if (((digits + symbcenter) < SYMBOLS.length) && ((digits + symbcenter) >= 0)) {
-                im.symbol = SYMBOLS[(int) digits + symbcenter];
+                aim.symbol = SYMBOLS[(int) digits + symbcenter];
             }
             else {
-                im.symbol = '?';
+                aim.symbol = '?';
             }
         }
     }
 
     private void findMinMaxValues() {
-        double minval = Double.NaN, maxval = Double.NaN;
-        for (PlotElement pe : gdef.plotElements) {
+        double [] minval = new double[gdef.valueAxisDefs.size()];
+        for (int i = 0; i<minval.length; i++) {
+            minval[i] = Double.NaN;
+        }
+        double [] maxval = minval.clone();
+
+        for (Map.Entry<PlotElement, Integer> entry : gdef.plotElements.entrySet())
+        {
+            PlotElement pe = entry.getKey();
+            int axis = entry.getValue();
+
+
             if (pe instanceof SourcedPlotElement) {
-                minval = Util.min(((SourcedPlotElement) pe).getMinValue(), minval);
-                maxval = Util.max(((SourcedPlotElement) pe).getMaxValue(), maxval);
+                minval[axis] = Util.min(((SourcedPlotElement) pe).getMinValue(), minval[axis]);
+                maxval[axis] = Util.max(((SourcedPlotElement) pe).getMaxValue(), maxval[axis]);
             }
         }
-        if (Double.isNaN(minval)) {
-            minval = 0D;
+
+        for (int axis=0; axis<gdef.valueAxisDefs.size(); axis++) {
+            if (Double.isNaN(minval[axis])) {
+                minval[axis] = 0D;
+            }
+            if (Double.isNaN(maxval[axis])) {
+                maxval[axis] = 1D;
+            }
+            AxisImageParameters aim = im.axisImageParams[axis];
+            aim.yminval = gdef.valueAxisDefs.get(axis).min;
+            aim.ymaxval = gdef.valueAxisDefs.get(axis).max;
+
+            adjustImageMinMaxValues(minval[axis], maxval[axis], aim);
         }
-        if (Double.isNaN(maxval)) {
-            maxval = 1D;
-        }
-        im.minval = gdef.minValue;
-        im.maxval = gdef.maxValue;
+    }
+    private void adjustImageMinMaxValues(double minval, double maxval, AxisImageParameters aim) {
         /* adjust min and max values */
-        if (Double.isNaN(im.minval) || ((!gdef.logarithmic && !gdef.rigid) && im.minval > minval)) {
-            im.minval = minval;
+        if (Double.isNaN(aim.yminval) || ((!aim.logarithmic && !gdef.rigid) && aim.yminval > minval)) {
+            aim.yminval = minval;
         }
-        if (Double.isNaN(im.maxval) || (!gdef.rigid && im.maxval < maxval)) {
-            if (gdef.logarithmic) {
-                im.maxval = maxval * 1.1;
+        if (Double.isNaN(aim.ymaxval) || (!gdef.rigid && aim.ymaxval < maxval)) {
+            if (aim.logarithmic) {
+                aim.ymaxval = maxval * 1.1;
             }
             else {
-                im.maxval = maxval;
+                aim.ymaxval = maxval;
             }
         }
         /* make sure min is smaller than max */
-        if (im.minval > im.maxval) {
-            im.minval = 0.99 * im.maxval;
+        if (aim.yminval > aim.ymaxval) {
+            aim.yminval = 0.99 * aim.ymaxval;
         }
         /* make sure min and max are not equal */
-        if (Math.abs(im.minval - im.maxval) < .0000001)  {
-            im.maxval *= 1.01;
-            if (!gdef.logarithmic) {
-                im.minval *= 0.99;
+        if (Math.abs(aim.yminval - aim.ymaxval) < .0000001)  {
+            aim.ymaxval *= 1.01;
+            if (!aim.logarithmic) {
+                aim.yminval *= 0.99;
             }
             /* make sure min and max are not both zero */
-            if (im.maxval == 0.0) {
-                im.maxval = 1.0;
+            if (aim.ymaxval == 0.0) {
+                aim.ymaxval = 1.0;
             }
         }
     }
 
     private void calculatePlotValues() {
-        for (PlotElement pe : gdef.plotElements) {
+        for (Map.Entry<PlotElement, Integer> entry : gdef.plotElements.entrySet())
+        {
+            PlotElement pe = entry.getKey();
+            int axis = entry.getValue();
             if (pe instanceof SourcedPlotElement) {
                 ((SourcedPlotElement) pe).assignValues(dproc);
             }
@@ -696,20 +888,32 @@ public class RrdGraph implements RrdGraphConstants {
         return timestampsDev;
     }
 
-    double[] ytr(double[] values) {
+    double[] ytr(int yaxis, double[] values) {
         double[] valuesDev = new double[2 * values.length - 1];
         for (int i = 0, j = 0; i < values.length; i += 1, j += 2) {
             if (Double.isNaN(values[i])) {
                 valuesDev[j] = Double.NaN;
             }
             else {
-                valuesDev[j] = mapper.ytr(values[i]);
+                valuesDev[j] = mapper.ytr(yaxis, values[i]);
             }
             if (j > 0) {
                 valuesDev[j - 1] = valuesDev[j];
             }
         }
         return valuesDev;
+    }
+
+    double[] floor(double floor, double[] values) {
+        double[] flooredValues = new double[values.length];
+        for (int i = 0; i< values.length; i++) {
+            if (Double.isNaN(values[i])) {
+                flooredValues[i] = floor;
+            } else {
+                flooredValues[i] = values[i];
+            }
+        }
+        return flooredValues;
     }
 
     /**
