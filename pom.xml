@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>com.netflix.rrd4j</groupId>
 	<artifactId>rrd4j</artifactId>
 	<name>RRD4J</name>
 	<packaging>jar</packaging>
-	<version>2.2.5-SNAPSHOT</version> <!-- It is org.rrd4j:rrd4j:2.2 with some changes. -->
+	<version>2.2.5</version> <!-- It is org.rrd4j:rrd4j:2.2 with some changes. -->
 	<description>A high performance data logging and graphing system for time series data.</description>
 	<url>https://github.com/brharrington/rrd4j</url>
 	<!-- Use the Sonatype parent to be able to sync to central. -->
@@ -42,7 +41,8 @@
 		<connection>scm:git:https://github.com/brharrington/rrd4j.git</connection>
 		<developerConnection>scm:git:https://github.com/brharrington/rrd4j.git</developerConnection>
 		<url>https://github.com/brharrington/rrd4j</url>
-	</scm>
+	  <tag>rrd4j-2.2.5</tag>
+  </scm>
 	<dependencies>
 		<!-- Dependencies for optional backends should have optional=true. -->
 		<dependency>
