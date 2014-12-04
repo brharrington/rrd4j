@@ -783,6 +783,7 @@ public class RrdGraph implements RrdGraphConstants {
     private void fetchData() throws IOException {
         dproc = new DataProcessor(gdef.startTime, gdef.endTime);
         dproc.setPoolUsed(gdef.poolUsed);
+        dproc.setTimeZone(gdef.tz);
         if (gdef.step > 0) {
             dproc.setStep(gdef.step);
             dproc.setFetchRequestResolution(gdef.step); 

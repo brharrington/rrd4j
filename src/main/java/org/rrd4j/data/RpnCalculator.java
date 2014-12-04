@@ -355,7 +355,7 @@ class RpnCalculator {
                 c.push((s.slot == 0) ? Double.NaN : s.token.values[s.slot - 1]);
             }
         },
-        
+
         //Time and date operator
         TKN_STEP("STEP") {
             @Override
@@ -378,7 +378,8 @@ class RpnCalculator {
         TKN_LTIME("LTIME") {
             @Override
             void do_method(RpnCalculator c, State s) {
-                c.push(c.timestamps[s.slot] + (long) (s.tz.getOffset(c.timestamps[s.slot]) / 1000L));
+                TimeZone tz = s.getTimeZone();
+                c.push(c.timestamps[s.slot] + (long) (tz.getOffset(c.timestamps[s.slot]) / 1000L));
             }
         },
         TKN_YEAR("YEAR") {
@@ -390,7 +391,7 @@ class RpnCalculator {
         TKN_MONTH("MONTH") {
             @Override
             void do_method(RpnCalculator c, State s) {
-                c.push(c.getCalendarField(c.pop(), Calendar.MONTH));
+                c.push(c.getCalendarField(c.pop(), Calendar.MONTH) + 1);
             }
         },
         TKN_DATE("DATE") {
@@ -714,7 +715,7 @@ class RpnCalculator {
     }
 
     private double getCalendarField(double timestamp, int field) {
-        Calendar calendar = Util.getCalendar((long) (timestamp * 1000));
+        Calendar calendar = Util.getCalendar((long) (timestamp));
         return calendar.get(field);
     }
 
@@ -773,12 +774,14 @@ class RpnCalculator {
         }
     }
 
-    private static final class State {
+    private final class State {
         public int token_rpi;
         int rpi;
         Token token;
         int slot;
-        final TimeZone tz = TimeZone.getDefault();
+        TimeZone getTimeZone() {
+            return RpnCalculator.this.dataProcessor.getTimeZone();
+        }
     }
 
     private static final class Token {
