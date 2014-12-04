@@ -1,0 +1,9 @@
+#NOTE: This is an Aether internal implementation file, its format can be changed without prior notice.
+#Wed Dec 03 23:28:15 PST 2014
+rrd4j-2.2.5-converter.jar>=
+rrd4j-2.2.5-sources.jar>=
+rrd4j-2.2.5.jar>=
+rrd4j-2.2.5-demo.jar>=
+rrd4j-2.2.5.pom>=
+rrd4j-2.2.5-inspector.jar>=
+rrd4j-2.2.5-javadoc.jar>=
